@@ -22,6 +22,9 @@ class v4_post_cf7_form_to_1crm
         add_action("wpcf7_before_send_mail", array(&$this, 'wpcf7_before_send_mail'));
         add_action('admin_menu', array($this, 'menu'));
 
+		add_filter( 'wpcf7_contact_form_properties', array($this, 'assign_form'), 10, 2 );
+		add_filter( 'wpcf7_validate_text',  array($this, 'validate'), 10, 2);
+
         if($this->get_setting('lc_uri') == '') $this->activate();
 
     }
@@ -44,37 +47,54 @@ class v4_post_cf7_form_to_1crm
 
     public function wpcf7_before_send_mail(WPCF7_ContactForm $wpcf7)
     {
-
+		set_time_limit(60);
         $postData = $wpcf7->posted_data;
-        if ($postData['acceptance-1crm'] == true) {
 
-            $post = array();
-            foreach ($postData as $key => $value){
-                $post[$key] = $value;
-            }
-            $post['campaign_id'] = $this->get_setting('campaign_id');
-            $post['assigned_user_id'] = $this->get_setting('assigned_user_id');
+		$post = array();
+		foreach ($postData as $key => $value){
+			$post[$key] = $value;
+		}
+		$post['campaign_id'] = $this->get_setting('campaign_id');
+		$post['assigned_user_id'] = $this->get_setting('assigned_user_id');
 
-            $postStringArray = array();
-            foreach ($post as $key => $value) {
-                $postStringArray[] = $key . '=' . urlencode($value);
-            }
-            $postString = implode('&', $postStringArray);
+		$override = $wpcf7->additional_setting( 'onecrm_override', false);
+		if (count($override)) {
+			foreach ($override as $s) {
+				$parts = explode('|', $s, 2);
+				if (count($parts) == 2) {
+					$post[$parts[0]] = $parts[1];
+				}
+			}
+		}
 
-            $url = $this->get_setting('lc_uri');
+		$postStringArray = array();
+		foreach ($post as $key => $value) {
+			if (is_array($value)) {
+				reset($value);
+				$value = current($value);
+			}
+			$postStringArray[] = $key . '=' . urlencode($value);
+		}
+		$postString = implode('&', $postStringArray);
 
-            $ch = curl_init();
-            curl_setopt($ch, CURLOPT_URL, $url);
-            curl_setopt($ch, CURLOPT_POST, count($postStringArray));
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $postString);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
+		$url = $wpcf7->additional_setting( 'onecrm_url', 1);
+		if (count($url))
+			$url = $url[0];
+		else
+			$url = $this->get_setting('lc_uri');
 
-            $return = curl_exec($ch);
+		$ch = curl_init();
+		curl_setopt($ch, CURLOPT_URL, $url);
+		curl_setopt($ch, CURLOPT_POST, count($postStringArray));
+		curl_setopt($ch, CURLOPT_POSTFIELDS, $postString);
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
 
-            curl_close($ch);
-            $wpcf7->posted_data['beschreibung'] .= "\n\n" . print_r($return, 1);
-        }
+		$return = curl_exec($ch);
 
+		curl_close($ch);
+		$return_field = $wpcf7->additional_setting( 'onecrm_return_field', 1);
+		if (count($return_field))
+			$wpcf7->posted_data[$return_field[0]] .= "\n\n" . print_r($return, 1);
 
     }
 
@@ -157,6 +177,37 @@ class v4_post_cf7_form_to_1crm
         }
     }
 
+	function validate($result, $tag)
+	{
+		$tag = new WPCF7_Shortcode( $tag );
+		$name = $tag->name;
+		$validators = $this->form->additional_setting('onecrm_validate_' . $name, false);
+		if (!empty($validators)) {
+			foreach ($validators as $v) {
+				$v = explode('|', $v, 2);
+				if (count($v) == 1) {
+					$message = 'Invalid value';
+					$re = $v[0];
+				} else {
+					list($message, $re) = $v;
+				}
+				$value = isset( $_POST[$name] ) ? stripslashes( strtr( (string) $_POST[$name], "\n", " " ) ) : '';
+				if (strlen($value) || empty($result['reason'][$name])) {
+					if (!@preg_match($re, $value)) {
+						$result['valid'] = false;
+						$result['reason'][$name] = $message;
+					}
+				}
+			}
+		}
+		return $result;
+	}
+
+	function assign_form($props, $form)
+	{
+		$this->form = $form;
+		return $props;
+	}
 }
 
 if (!function_exists('str_true')) {
@@ -183,8 +234,6 @@ if (!function_exists('str_true')) {
         if (is_bool($string)) return $string;
         return in_array(strtolower($string), $istrue);
     }
-
-
 }
 
 $v4ContactForm = v4_post_cf7_form_to_1crm::getInstance();
