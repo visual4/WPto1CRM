@@ -24,6 +24,8 @@ class v4_post_cf7_form_to_1crm
 
 		add_filter( 'wpcf7_contact_form_properties', array($this, 'assign_form'), 10, 2 );
 		add_filter( 'wpcf7_validate_text',  array($this, 'validate'), 10, 2);
+		add_filter( 'wpcf7_form_action_url',  array($this, 'process_url'), 10, 1);
+		add_filter( 'wpcf7_form_elements',  array($this, 'add_elements'), 10, 1);
 
         if($this->get_setting('lc_uri') == '') $this->activate();
 
@@ -208,6 +210,56 @@ class v4_post_cf7_form_to_1crm
 		$this->form = $form;
 		return $props;
 	}
+
+	function process_url($url)
+	{
+		$parsed = parse_url($url);
+		$source_number = $partner_number = null;
+		if (!empty($parsed['query'])) {
+			$parts = explode('&', $parsed['query']);
+			foreach ($parts as $part) {
+				if (preg_match('/^(\d+)|(\d+_)|(\d+_\d+)|(_\d+)$/', $part)) {
+					$numbers = explode('_', $part);
+					if (count($numbers) == 2)
+						list($partner_number, $source_number) = $numbers;
+					else {
+						$partner_number = $numbers[0];
+						$source_number = null;
+					}
+				}
+			}
+		}
+		if (empty($partner_number))
+			if (!empty($_COOKIE[OCRM_EX1]))
+				$partner_number = $_COOKIE[OCRM_EX1];
+		if (empty($source_number))
+			if (!empty($_COOKIE[OCRM_EX2]))
+				$source_number = $_COOKIE[OCRM_EX2];
+		$partner_number = (int)$partner_number;
+		$source_number = (int)$source_number;
+
+		$params = array();
+		if (!empty($partner_number)) {
+			$params[OCRM_EX1] = $partner_number;
+			setcookie (OCRM_EX1, $partner_number, time() + 365 * 24 * 60 * 60, '/'); 
+		}
+		if (!empty($source_number)) {
+			$params[OCRM_EX2] = $source_number;
+			setcookie (OCRM_EX2, $source_number, time() + 365 * 24 * 60 * 60, '/'); 
+		}
+
+		$this->partner_params = $params;
+
+		return $url;
+	}
+
+	function add_elements($html)
+	{
+		foreach ($this->partner_params as $k => $v) {
+			$html .= "<input type=\"hidden\" name=\"$k\" value=\"$v\" />";
+		}
+		return $html;
+	}
 }
 
 if (!function_exists('str_true')) {
@@ -237,4 +289,6 @@ if (!function_exists('str_true')) {
 }
 
 $v4ContactForm = v4_post_cf7_form_to_1crm::getInstance();
+define('OCRM_EX1', '_1crm_ex1');
+define('OCRM_EX2', '_1crm_ex2');
 
