@@ -24,8 +24,8 @@ class v4_post_cf7_form_to_1crm
 
 		add_filter( 'wpcf7_contact_form_properties', array($this, 'assign_form'), 10, 2 );
 		add_filter( 'wpcf7_validate_text',  array($this, 'validate'), 10, 2);
-		add_filter( 'wpcf7_form_action_url',  array($this, 'process_url'), 10, 1);
 		add_filter( 'wpcf7_form_elements',  array($this, 'add_elements'), 10, 1);
+		add_filter( 'request', array($this, 'process_request_vars'), 10, 1 );
 
         if($this->get_setting('lc_uri') == '') $this->activate();
 
@@ -211,9 +211,17 @@ class v4_post_cf7_form_to_1crm
 		return $props;
 	}
 
-	function process_url($url)
+	function add_elements($html)
 	{
-		$parsed = parse_url($url);
+		foreach ($this->partner_params as $k => $v) {
+			$html .= "<input type=\"hidden\" name=\"$k\" value=\"$v\" />";
+		}
+		return $html;
+	}
+
+	public function process_request_vars($vars) {
+		$request_uri = $_SERVER['REQUEST_URI'];
+		$parsed = parse_url($request_uri);
 		$source_number = $partner_number = null;
 		if (!empty($parsed['query'])) {
 			$parts = explode('&', $parsed['query']);
@@ -240,25 +248,16 @@ class v4_post_cf7_form_to_1crm
 
 		$params = array();
 		if (!empty($partner_number)) {
-			$params[OCRM_EX1] = $partner_number;
-			setcookie (OCRM_EX1, $partner_number, time() + 365 * 24 * 60 * 60, '/'); 
+			$params['_ex1'] = $partner_number;
+			setcookie (OCRM_EX1, $partner_number, time() + 365 * 24 * 60 * 60, COOKIEPATH, 'www.1crm.com'); 
 		}
 		if (!empty($source_number)) {
-			$params[OCRM_EX2] = $source_number;
-			setcookie (OCRM_EX2, $source_number, time() + 365 * 24 * 60 * 60, '/'); 
+			$params['_ex2'] = $source_number;
+			setcookie (OCRM_EX2, $source_number, time() + 365 * 24 * 60 * 60, COOKIEPATH, 'www.1crm.com'); 
 		}
 
 		$this->partner_params = $params;
-
-		return $url;
-	}
-
-	function add_elements($html)
-	{
-		foreach ($this->partner_params as $k => $v) {
-			$html .= "<input type=\"hidden\" name=\"$k\" value=\"$v\" />";
-		}
-		return $html;
+		return $vars;
 	}
 }
 
