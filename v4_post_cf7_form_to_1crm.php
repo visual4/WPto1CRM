@@ -50,7 +50,9 @@ class v4_post_cf7_form_to_1crm
     public function wpcf7_before_send_mail(WPCF7_ContactForm $wpcf7)
     {
 		set_time_limit(60);
-        $postData = $wpcf7->posted_data;
+		$submission = WPCF7_Submission::get_instance();
+        $postData = $submission->get_posted_data();
+
 
 		$post = array();
 		foreach ($postData as $key => $value){
@@ -58,6 +60,7 @@ class v4_post_cf7_form_to_1crm
 		}
 		$post['campaign_id'] = $this->get_setting('campaign_id');
 		$post['assigned_user_id'] = $this->get_setting('assigned_user_id');
+		$post['user'] = $this->get_setting('assigned_user_id');
 
 		$override = $wpcf7->additional_setting( 'onecrm_override', false);
 		if (count($override)) {
@@ -95,8 +98,10 @@ class v4_post_cf7_form_to_1crm
 
 		curl_close($ch);
 		$return_field = $wpcf7->additional_setting( 'onecrm_return_field', 1);
-		if (count($return_field))
-			$wpcf7->posted_data[$return_field[0]] .= "\n\n" . print_r($return, 1);
+		if (count($return_field)) {
+            //TODO: geht so nicht mehr...
+            //$wpcf7->$return_field[0]() = "\n\n" . print_r($return, 1);
+        }
 
     }
 
@@ -249,11 +254,11 @@ class v4_post_cf7_form_to_1crm
 		$params = array();
 		if (!empty($partner_number)) {
 			$params['_ex1'] = $partner_number;
-			setcookie (OCRM_EX1, $partner_number, time() + 365 * 24 * 60 * 60, COOKIEPATH, 'www.1crm.com'); 
+			setcookie (OCRM_EX1, $partner_number, time() + 30 * 24 * 60 * 60, COOKIEPATH);
 		}
 		if (!empty($source_number)) {
 			$params['_ex2'] = $source_number;
-			setcookie (OCRM_EX2, $source_number, time() + 365 * 24 * 60 * 60, COOKIEPATH, 'www.1crm.com'); 
+			setcookie (OCRM_EX2, $source_number, time() + 30 * 24 * 60 * 60, COOKIEPATH);
 		}
 
 		$this->partner_params = $params;
